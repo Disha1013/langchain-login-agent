@@ -1,24 +1,80 @@
 import os
 from dotenv import load_dotenv
-from tools import go_to_url, type_text, click_element
+from agent import build_agent
+from tools import check_login_success, open_url, type_username, type_password, click_login, check_login_success
 
 load_dotenv()
 
 USERNAME = os.getenv("GITHUB_USERNAME")
 PASSWORD = os.getenv("GITHUB_PASSWORD")
 
-print("\n🤖 Starting GitHub Login Agent...\n")
+agent = build_agent()
 
-# Step 1: Open login page
-go_to_url.invoke("https://github.com/login")
+print("\n🤖 Starting Controlled Agent (SAFE)...\n")
 
-# Step 2: Type username
-type_text.invoke(f"#login_field|{USERNAME}")
+# Read steps
+with open("skill.md", "r") as f:
+    steps = f.readlines()
 
-# Step 3: Type password
-type_text.invoke(f"#password|{PASSWORD}")
+for step in steps:
+    step = step.strip()
 
-# Step 4: Click login
-click_element.invoke("input[type='submit']")
+    print(f"\n Step: {step}")
 
-print("\n✅ Login flow completed\n")
+    response = agent.invoke({
+        "messages": [
+            {
+                "role": "user",
+                "content": f"""
+You are an instruction parser.
+
+Convert this step into a tool call.
+
+Step:
+{step}
+
+Available tools:
+- open_url(url)
+- type_username(username)
+- type_password(password)
+- click_login()
+- check_login_success()
+
+IMPORTANT RULES:
+- "Check if login was successful" → use check_login_success
+- NEVER click login more than once
+- DO NOT repeat previous actions
+
+Return ONLY in this JSON format:
+{{
+  "tool": "tool_name",
+  "input": "value"
+}}
+
+Use:
+username = {USERNAME}
+password = {PASSWORD}
+"""
+            }
+        ]
+    })
+
+    output = response["messages"][-1].content
+    print(" Agent Output:", output)
+
+    if "open_url" in output:
+        open_url.invoke("https://github.com/login")
+
+    elif "type_username" in output:
+        type_username.invoke(USERNAME)
+
+    elif "type_password" in output:
+        type_password.invoke(PASSWORD)
+
+    elif "click_login" in output:
+        click_login.invoke("")
+
+    elif "check_login_success" in output:
+        check_login_success.invoke("")
+
+print("\n All steps completed safely!\n")
